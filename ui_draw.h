@@ -25,7 +25,6 @@ extern SemaphoreHandle_t uiMutex;
 #define BTN_BORDER_COMMON 0x630C   
 #define BTN_TEXT_COLOR    TFT_WHITE
 
-
 // --- FUNCTIONS ---
 void initSprites();
 void updateHeader(bool wifiOn, bool serverOn);

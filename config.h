@@ -2,13 +2,27 @@
 #define CONFIG_H
 
 #include <Arduino.h>
-#include <TFT_eSPI.h> 
+#include <TFT_eSPI.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 
-// --- 1. WIFI ---
-#define MQTT_SERVER     "167.71.201.144" 
-#define MQTT_PORT       1883
-#define MQTT_USER       "admin" 
-#define MQTT_PASS       "123456"
+// --- 1. MQTT CREDENTIAL BUFFER SIZES (values live in Flash / RAM, not macros) ---
+#define MQTT_HOST_LEN       64
+#define MQTT_USER_LEN       32
+#define MQTT_PASS_LEN       64
+#define MQTT_PORT_DEFAULT   1883
+/** Factory defaults — kept when user only configures WiFi and never saves MQTT. */
+#define MQTT_DEFAULT_SERVER "167.71.201.144"
+#define MQTT_DEFAULT_USER   "admin"
+#define MQTT_DEFAULT_PASS   "123456"
+
+extern char     mqttServer[MQTT_HOST_LEN];
+extern uint16_t mqttPort;
+extern char     mqttUser[MQTT_USER_LEN];
+extern char     mqttPass[MQTT_PASS_LEN];
+
+/** Set by portal Save MQTT — mqtt_handler disconnects and reconnects with new creds. */
+extern volatile bool mqttForceReconnect;
 
 // --- 2. PIN DEFINITIONS ---
 #define PIN_RELAY_1     4
@@ -17,39 +31,40 @@
 #define PIN_RELAY_4     16
 #define PIN_BUTTON_RESET 0
 
-// --- 3. EXTERN OBJECTS (HARDWARE) ---
-extern String SERIAL_NUMBER;
-extern TFT_eSPI tft; 
+// --- 3. BUFFER / QUEUE SIZES ---
+#define MAX_RULES           10
+#define SERIAL_NUMBER_LEN   32
+#define TOPIC_LEN           64
+#define ROLE_LEN            32
+#define RULE_METRIC_LEN     32
+#define RULE_OP_LEN         4
+#define RULE_ACTION_LEN     32
+#define MQTT_TOPIC_MAX      96
+#define MQTT_PAYLOAD_MAX    2048
+#define MQTT_QUEUE_LEN      5
 
-extern bool hasTemp;
-extern bool hasHumid;
-extern bool hasSoil;
-extern bool hasLight;
+// --- 4. HARDWARE OBJECT ---
+extern TFT_eSPI tft;
 
-extern bool hasRelay1;
-extern bool hasRelay2;
-extern bool hasRelay3;
-extern bool hasRelay4;
+// --- 5. STATIC IDENTITY & MQTT TOPICS (no heap String) ---
+extern char SERIAL_NUMBER[SERIAL_NUMBER_LEN];
+extern char TOPIC_SUB_PREFIX[TOPIC_LEN];
+extern char TOPIC_SUB_RELAYS[TOPIC_LEN];
+extern char TOPIC_SUB_MESSAGE[TOPIC_LEN];
+extern char TOPIC_PUB_STATUS[TOPIC_LEN];
+extern char TOPIC_PUB_TELEMETRY[TOPIC_LEN];
+extern char TOPIC_SUB_CONFIG[TOPIC_LEN];
+extern char TOPIC_PUB_LOG[TOPIC_LEN];
 
-extern String roleRelay1;
-extern String roleRelay2;
-extern String roleRelay3;
-extern String roleRelay4;
-
-// --- 4. EXTERN OBJECTS (LOGIC AUTOMATION) ---
-#define MAX_RULES 10 
-
+// --- 6. LOGIC AUTOMATION TYPES ---
 struct LogicRule {
-    String metric;
-    String op;
+    char metric[RULE_METRIC_LEN];
+    char op[RULE_OP_LEN];
     float value;
-    String action;
+    char action[RULE_ACTION_LEN];
     unsigned long duration_ms;
     unsigned long cooldown_ms;
 };
-
-extern LogicRule rules[MAX_RULES];
-extern int ruleCount;
 
 struct ActionState {
     bool isActive;
@@ -58,15 +73,37 @@ struct ActionState {
     unsigned long lastOffTime;
 };
 
-extern ActionState relayStates[4]; 
+// --- 7. CENTRALIZED SYSTEM STATE ---
+struct SystemState {
+    bool hasTemp;
+    bool hasHumid;
+    bool hasSoil;
+    bool hasLight;
 
-// --- 5. TOPIC MQTT ---
-extern String TOPIC_SUB_PREFIX;
-extern String TOPIC_SUB_RELAYS;
-extern String TOPIC_SUB_MESSAGE;
-extern String TOPIC_PUB_STATUS;
-extern String TOPIC_PUB_TELEMETRY;
-extern String TOPIC_SUB_CONFIG;
-extern String TOPIC_PUB_LOG;
+    bool hasRelay1;
+    bool hasRelay2;
+    bool hasRelay3;
+    bool hasRelay4;
+
+    char roleRelay1[ROLE_LEN];
+    char roleRelay2[ROLE_LEN];
+    char roleRelay3[ROLE_LEN];
+    char roleRelay4[ROLE_LEN];
+
+    LogicRule rules[MAX_RULES];
+    int ruleCount;
+    ActionState relayStates[4];
+};
+
+extern SystemState sysState;
+
+// --- 8. MQTT FREE RTOS QUEUE (Core 0 enqueue / Core 1 dequeue) ---
+struct MqttMessage {
+    char topic[MQTT_TOPIC_MAX];
+    char payload[MQTT_PAYLOAD_MAX];
+    uint16_t length;
+};
+
+extern QueueHandle_t mqttQueue;
 
 #endif
